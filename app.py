@@ -1,0 +1,265 @@
+import streamlit as st
+import pandas as pd
+import sqlite3
+import plotly.express as px
+
+st.set_page_config(page_title="G20 Economic Dashboard", layout="wide")
+st.title("📊 G20 Economic Dashboard")
+st.markdown("Explore GDP per capita, inflation, and unemployment through interactive visualisations.")
+
+
+# ---------- Load data ----------
+@st.cache_data
+def load_data():
+    conn = sqlite3.connect("database/economics.db")
+    df = pd.read_sql("SELECT * FROM economic_cleaned", conn)
+    conn.close()
+    return df
+
+
+df = load_data()
+
+# ---------- Sidebar: Country filter (global across all tabs) ----------
+st.sidebar.header("Filters")
+countries = st.sidebar.multiselect(
+    "Select countries",
+    options=sorted(df["country_code"].unique()),
+    default=sorted(df["country_code"].unique())
+)
+
+# Filter data based on selected countries
+filtered_df = df[df["country_code"].isin(countries)]
+
+if filtered_df.empty:
+    st.warning("No data for the selected countries. Please adjust filters.")
+    st.stop()
+
+
+# ---------- Helper function for metric tabs (GDP, Inflation, Unemployment) ----------
+def create_metric_tab(metric, metric_label, y_axis_label, min_val, max_val, default_range, category_col,
+                      category_label):
+    st.header(f"{metric_label}")
+
+    # Slider for this metric (range filter)
+    metric_range = st.slider(
+        f"Filter by {metric_label} range",
+        min_value=float(min_val),
+        max_value=float(max_val),
+        value=default_range,
+        step=(max_val - min_val) / 100,
+        key=f"slider_{metric}"
+    )
+    # Apply metric filter
+    filtered = filtered_df[
+        (filtered_df[metric] >= metric_range[0]) &
+        (filtered_df[metric] <= metric_range[1])
+        ]
+    if filtered.empty:
+        st.warning(f"No countries in the selected {metric_label} range. Adjust the slider.")
+        return
+
+    # 1. Bar chart: countries on x, metric on y, coloured by its own category (GDP category for GDP tab, etc.)
+    fig_bar = px.bar(
+        filtered,
+        x="country_code",
+        y=metric,
+        color=category_col,  # use the metric's own categorical column
+        title=f"{metric_label} by Country",
+        hover_data=["inflation", "unemployment", "gdp_category", "inflation_category", "unemployment_category"],
+        labels={metric: y_axis_label, "country_code": "Country"}
+    )
+    st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{metric}")
+
+    # 2. Count of countries by its own category (e.g., GDP category, inflation category)
+    st.subheader(f"Number of Countries by {category_label}")
+    category_counts = filtered[category_col].value_counts().reset_index()
+    category_counts.columns = [category_label, "Count"]
+    fig_category_bar = px.bar(
+        category_counts,
+        x=category_label,
+        y="Count",
+        color=category_label,
+        title=f"How many countries fall into each {category_label.lower()}?",
+        text="Count"
+    )
+    st.plotly_chart(fig_category_bar, use_container_width=True, key=f"cat_bar_{metric}")
+
+    # 3. Scatter plot: metric vs GDP per capita (or vs others)
+    if metric == "gdp_per_capita":
+        fig_scatter = px.scatter(
+            filtered,
+            x="inflation",
+            y="unemployment",
+            size=metric,
+            color="country_code",
+            hover_name="country_code",
+            size_max=60,
+            labels={"inflation": "Inflation (%)", "unemployment": "Unemployment (%)"},
+            title=f"{metric_label} (bubble size) vs Inflation & Unemployment"
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True, key=f"scatter_{metric}")
+    else:
+        fig_scatter = px.scatter(
+            filtered,
+            x="gdp_per_capita",
+            y=metric,
+            size=metric,
+            color="country_code",
+            hover_name="country_code",
+            size_max=60,
+            labels={"gdp_per_capita": "GDP per capita (USD)", metric: y_axis_label},
+            title=f"{metric_label} vs GDP per capita"
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True, key=f"scatter_{metric}")
+
+    # 4. Choropleth map
+    fig_map = px.choropleth(
+        filtered,
+        locations="country_code",
+        color=metric,
+        hover_name="country_code",
+        hover_data=["gdp_per_capita", "inflation", "unemployment", category_col],
+        title=f"{metric_label} across G20 countries",
+        color_continuous_scale="Viridis",
+        projection="natural earth"
+    )
+    st.plotly_chart(fig_map, use_container_width=True, key=f"map_{metric}")
+
+    # 5. Pie chart: distribution of the metric's own category (for GDP: gdp_category, etc.)
+    pie_counts = filtered[category_col].value_counts().reset_index()
+    pie_counts.columns = [category_label, "Count"]
+    fig_pie = px.pie(
+        pie_counts,
+        values="Count",
+        names=category_label,
+        title=f"{category_label} Distribution (filtered countries)",
+        hole=0.4
+    )
+    st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_{metric}")
+
+    # Note: Correlation heatmap removed from metric tabs (only in General Overview)
+
+
+# ---------- Determine value ranges for sliders ----------
+gdp_min = df["gdp_per_capita"].min()
+gdp_max = df["gdp_per_capita"].max()
+inf_min = df["inflation"].min()
+inf_max = df["inflation"].max()
+unemp_min = df["unemployment"].min()
+unemp_max = df["unemployment"].max()
+
+gdp_default = (gdp_min, gdp_max)
+inf_default = (inf_min, inf_max)
+unemp_default = (unemp_min, unemp_max)
+
+# ---------- Create Tabs: General first, then GDP, Inflation, Unemployment ----------
+tab_general, tab_gdp, tab_inf, tab_unemp = st.tabs(
+    ["📊 General Overview", "💰 GDP per capita", "📈 Inflation", "👥 Unemployment"])
+
+# ========== GENERAL OVERVIEW TAB ==========
+with tab_general:
+    st.header("General Overview of Selected Countries")
+
+    # 1. Number of countries by GDP category (bar chart)
+    st.subheader("Number of Countries by GDP Category")
+    gdp_cat_counts = filtered_df["gdp_category"].value_counts().reset_index()
+    gdp_cat_counts.columns = ["GDP Category", "Count"]
+    fig_gdp_cat_bar = px.bar(
+        gdp_cat_counts,
+        x="GDP Category",
+        y="Count",
+        color="GDP Category",
+        title="How many countries fall into each income group?",
+        text="Count"
+    )
+    st.plotly_chart(fig_gdp_cat_bar, use_container_width=True, key="gen_gdp_cat_bar")
+
+    # 2. Number of countries by inflation category (bar chart)
+    st.subheader("Number of Countries by Inflation Category")
+    inf_cat_counts = filtered_df["inflation_category"].value_counts().reset_index()
+    inf_cat_counts.columns = ["Inflation Category", "Count"]
+    fig_inf_cat_bar = px.bar(
+        inf_cat_counts,
+        x="Inflation Category",
+        y="Count",
+        color="Inflation Category",
+        title="How many countries experience each level of inflation?",
+        text="Count"
+    )
+    st.plotly_chart(fig_inf_cat_bar, use_container_width=True, key="gen_inf_cat_bar")
+
+    # 3. Number of countries by unemployment category (bar chart)
+    st.subheader("Number of Countries by Unemployment Category")
+    unemp_cat_counts = filtered_df["unemployment_category"].value_counts().reset_index()
+    unemp_cat_counts.columns = ["Unemployment Category", "Count"]
+    fig_unemp_cat_bar = px.bar(
+        unemp_cat_counts,
+        x="Unemployment Category",
+        y="Count",
+        color="Unemployment Category",
+        title="How many countries fall into each unemployment level?",
+        text="Count"
+    )
+    st.plotly_chart(fig_unemp_cat_bar, use_container_width=True, key="gen_unemp_cat_bar")
+
+    # 4. Correlation heatmap (GDP, inflation, unemployment)
+    st.subheader("Correlation Between Economic Indicators")
+    numeric_cols = ["gdp_per_capita", "inflation", "unemployment"]
+    corr = filtered_df[numeric_cols].corr()
+    fig_heatmap_gen = px.imshow(
+        corr,
+        text_auto=True,
+        aspect="auto",
+        color_continuous_scale="RdBu_r",
+        title="Correlation Matrix (GDP per capita, Inflation, Unemployment)"
+    )
+    st.plotly_chart(fig_heatmap_gen, use_container_width=True, key="gen_heatmap")
+
+    # 5. Scatter plot: Inflation vs Unemployment (size = GDP per capita)
+    st.subheader("Inflation vs Unemployment (bubble size = GDP per capita)")
+    fig_scatter_gen = px.scatter(
+        filtered_df,
+        x="inflation",
+        y="unemployment",
+        size="gdp_per_capita",
+        color="country_code",
+        hover_name="country_code",
+        size_max=60,
+        labels={"inflation": "Inflation (%)", "unemployment": "Unemployment (%)"},
+        title="Relationship between inflation and unemployment – each bubble is a country"
+    )
+    st.plotly_chart(fig_scatter_gen, use_container_width=True, key="gen_scatter")
+
+    # 6. Box plot of GDP per capita by income group
+    st.subheader("GDP per capita Distribution by Income Group")
+    fig_box = px.box(
+        filtered_df,
+        x="gdp_category",
+        y="gdp_per_capita",
+        color="gdp_category",
+        title="Spread of GDP per capita within each income category",
+        labels={"gdp_category": "GDP Category", "gdp_per_capita": "GDP per capita (USD)"}
+    )
+    st.plotly_chart(fig_box, use_container_width=True, key="gen_box")
+
+# ========== GDP TAB ==========
+with tab_gdp:
+    create_metric_tab("gdp_per_capita", "GDP per capita", "GDP per capita (USD)",
+                      gdp_min, gdp_max, gdp_default, "gdp_category", "GDP Category")
+
+# ========== INFLATION TAB ==========
+with tab_inf:
+    create_metric_tab("inflation", "Inflation", "Inflation (%)",
+                      inf_min, inf_max, inf_default, "inflation_category", "Inflation Category")
+
+# ========== UNEMPLOYMENT TAB ==========
+with tab_unemp:
+    create_metric_tab("unemployment", "Unemployment", "Unemployment (%)",
+                      unemp_min, unemp_max, unemp_default, "unemployment_category", "Unemployment Category")
+
+# ---------- Raw data table (expandable) ----------
+with st.expander("📋 View filtered raw data (based on country selection)"):
+    st.dataframe(filtered_df, use_container_width=True)
+
+st.markdown("---")
+st.caption("Data source: World Bank API (latest available year). Dashboard built with Streamlit and Plotly.")
