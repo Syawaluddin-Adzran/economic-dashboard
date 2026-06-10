@@ -3,8 +3,8 @@ import pandas as pd
 import sqlite3
 import plotly.express as px
 
-st.set_page_config(page_title="G20 Economic Dashboard", layout="wide")
-st.title("📊 G20 Economic Dashboard")
+st.set_page_config(page_title="Economic G20 Dashboard", layout="wide")
+st.title("📊 Economic G20 Dashboard")
 st.markdown("Explore GDP per capita, inflation, and unemployment through interactive visualisations.")
 
 

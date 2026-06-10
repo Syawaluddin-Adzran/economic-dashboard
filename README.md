@@ -1,4 +1,4 @@
-# 📊 G20 Economic Dashboard
+# 📊 Economic G20 Dashboard
 
 **Interactive Business Intelligence Dashboard for Global Economic Analysis**
 
@@ -364,7 +364,7 @@ Free to use, modify, and distribute.
 **Muhammad Syawaluddin Bin Adzran**
 
 * GitHub: https://github.com/Syawaluddin-Adzran
-* LinkedIn: Add your LinkedIn URL
+* LinkedIn: https://www.linkedin.com/in/muhammad-syawaluddin-bin-adzran/
 
 ---
 
