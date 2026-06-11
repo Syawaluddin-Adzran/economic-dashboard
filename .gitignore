@@ -1,4 +1,4 @@
-# Python cache and compiled files
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -9,20 +9,27 @@ __pycache__/
 venv/
 env/
 
-# IDE specific files
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Streamlit secrets
+# Streamlit
 .streamlit/secrets.toml
 
-# OS generated files
+# Database (if you want to exclude the .db file, but it's small and included for demo)
+# database/*.db
+
+# Outputs from static chart generator
+outputs/static_charts/
+
+# OS junk
 .DS_Store
 Thumbs.db
 
-# Logs and databases (if you don't want to commit the .db file)
+# Environment variables
+.env
+
+# Logs
 *.log
-*.sqlite
-*.sqlite3
